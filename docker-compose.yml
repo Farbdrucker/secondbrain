@@ -1,0 +1,21 @@
+services:
+  bot:
+    build: .
+    image: secondbrain:latest            # one image for bot and worker, so one build updates both
+    command: python -m app.bot
+    restart: unless-stopped
+    env_file: .env
+    user: "${UID:-1000}:${GID:-1000}"   # files in brain/ belong to you, not root
+    volumes:
+      - ./brain:/data/brain:z            # :z for SELinux on Fedora
+
+  worker:
+    build: .
+    image: secondbrain:latest
+    command: python -m app.worker
+    profiles: ["worker"]                 # not started by `up`; run by cron
+    env_file: .env
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./brain:/data/brain:z
+      - ./cache:/data/cache:z            # whisper models, optional cookies.txt

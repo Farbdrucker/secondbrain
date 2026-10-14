@@ -1,0 +1,23 @@
+# Secrets
+.env
+.env.*
+!.env.example
+cookies.txt
+*.cookies
+
+# Personal data: brain/ is its own git repo; cache/ holds whisper models
+brain/
+cache/
+
+# Python / tooling
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.log

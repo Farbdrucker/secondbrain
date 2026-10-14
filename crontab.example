@@ -1,0 +1,5 @@
+# crontab -e  (on the host; adjust the path)
+# Every night at 03:00: process the inbox, update topic pages, commit brain/.
+0 3 * * * cd /path/to/secondbrain && flock /tmp/secondbrain.lock docker compose run --rm -T worker >> /var/log/secondbrain.log 2>&1
+# Sundays at 03:30: lint (duplicates, tag merges, orphans). flock waits for the worker to finish.
+30 3 * * 0 cd /path/to/secondbrain && flock /tmp/secondbrain.lock docker compose run --rm -T worker python -m app.lint >> /var/log/secondbrain.log 2>&1
