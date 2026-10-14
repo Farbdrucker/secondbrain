@@ -120,7 +120,9 @@ def dedupe(cfg: Config, now: datetime, dry_run: bool) -> list[str]:
         if len(notes) < 2:
             continue
         keep, *drop = sorted(notes, key=lambda n: (str(n.meta.get("received_at", "")), str(n.meta["id"])))
-        for n in drop:
+        # Same id twice is a copy of one entry (e.g. a Nextcloud conflict copy), not a duplicate
+        # submission: find_orphans reports it, a person decides which version to keep.
+        for n in [n for n in drop if n.meta["id"] != keep.meta["id"]]:
             removed.append(f"{n.meta.get('title')} ({n.meta['id']}, kept {keep.meta['id']})")
             if dry_run:
                 continue
@@ -217,6 +219,12 @@ def find_orphans(cfg: Config) -> list[str]:
             out.append(f"wiki/{n.path.name} has no raw text")
     for p in sorted(cfg.failed.glob("*.json")):
         out.append(f"inbox/failed/{p.name} failed permanently")
+    files_by_id: dict[str, list[str]] = {}
+    for n in wiki.all_notes(cfg.wiki):
+        files_by_id.setdefault(str(n.meta["id"]), []).append(n.path.name)
+    for id_, names in sorted(files_by_id.items()):
+        if len(names) > 1:
+            out.append(f"id {id_} is in {len(names)} files (sync conflict copy?): {', '.join(sorted(names))}")
     for p in sorted(cfg.wiki.glob("*.md")):
         if not wiki.read_frontmatter(p).get("id"):
             out.append(f"wiki/{p.name} has no id in its frontmatter")

@@ -161,3 +161,13 @@ def test_search(cfg):
     assert [h.meta["id"] for h in hits] == ["s-1"]
     assert "#headphones #running" in format_results("x", hits)
     assert search(cfg.wiki, "nothing-here") == [] and "Nothing found" in format_results("q", [])
+
+
+def test_conflict_copy_is_reported_not_deleted(cfg):
+    ingest(cfg, [("c-1", "web", "https://example.org/a", "Article", ["a", "b", "c"], "2026-10-14T10:00:00+02:00")])
+    [orig] = cfg.wiki.glob("*.md")
+    copy = orig.with_name(orig.stem + " (conflicted copy 2026-10-15 120000).md")
+    copy.write_text(orig.read_text().replace("## Summary", "## Summary\nEdited on the phone."))
+    assert lint.dedupe(cfg, worker._now(cfg), dry_run=False) == []
+    assert orig.exists() and copy.exists() and (cfg.raw / "c-1.txt").exists()
+    assert any("id c-1 is in 2 files (sync conflict copy?)" in o for o in lint.find_orphans(cfg))
