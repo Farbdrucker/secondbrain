@@ -44,6 +44,8 @@ committet `brain/`.
 5. `docker compose build && docker compose up -d bot`
 6. Die beiden Cron-Einträge aus `crontab.example` übernehmen (`crontab -e`).
 
+Inhalte zusätzlich in Nextcloud haben: siehe [docs/nextcloud.md](docs/nextcloud.md).
+
 Den Worker manuell starten: `docker compose run --rm -T worker`
 
 Beim ersten Whisper-Lauf lädt der Worker das Modell nach `cache/whisper/` (`small`: ca. 500 MB).

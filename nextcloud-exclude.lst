@@ -1,0 +1,11 @@
+# Files in brain/ that must not be synced to Nextcloud (see docs/nextcloud.md).
+# Git repository: two-way sync corrupts it.
+.git/
+# Worker lock and atomic-write temp files
+.worker.lock
+*.tmp
+.*.tmp
+# Queue of the bot, processed at night
+inbox/
+# Obsidian rewrites this on every click; syncing it causes conflicts between devices
+.obsidian/workspace*.json
