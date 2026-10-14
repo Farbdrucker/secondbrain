@@ -16,6 +16,11 @@ committet `brain/`.
   Dateien dabei um. Meldet verwaiste Dateien und Einträge in `inbox/failed/`.
   Vorschau ohne Änderungen: `docker compose run --rm -T worker python -m app.lint --dry-run`
 - **Suche:** `/search <wörter>` im Bot findet Einträge, die alle Wörter enthalten.
+- **Hacker News:** Bei Links wie `news.ycombinator.com/item?id=…` holt der Worker über die
+  HN-API den verlinkten Artikel. Zusammenfassung und Tags beziehen sich auf den Artikel. Im
+  Frontmatter bleibt `source` der HN-Link, `article` ist der Artikel, die Notiz verlinkt beide.
+  Bei „Ask HN“ und anderen Textbeiträgen wird der Beitragstext zusammengefasst. Ist der Artikel
+  blockiert, entsteht ein Später-lesen-Eintrag mit dem HN-Titel.
 - **Später lesen:** Links von archive.ph/.today/.is & Co. (Bot-Schutz) speichert der Worker ohne
   Abruf und ohne LLM, mit den Tags `lesen` und `todo`. Webseiten, die sich nicht laden lassen,
   landen ebenfalls dort und nicht in `failed/`. Schickst du einen Text mit dem Link, wird er zum

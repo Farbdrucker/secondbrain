@@ -6,7 +6,18 @@ from urllib.parse import parse_qsl, urlencode, urlparse
 TRACKING = re.compile(r"^(utm_.*|fbclid|gclid|igsh|igshid|si|obrf|ref|ref_src|mc_cid|mc_eid|feature)$")
 
 
+def hn_item_id(url: str) -> str | None:
+    """The item id of a Hacker News discussion link, e.g. news.ycombinator.com/item?id=123."""
+    p = urlparse(url.strip())
+    if (p.hostname or "").lower() == "news.ycombinator.com" and p.path == "/item":
+        item = dict(parse_qsl(p.query)).get("id", "")
+        return item if item.isdigit() else None
+    return None
+
+
 def canonical(url: str) -> str:
+    if item := hn_item_id(url):
+        return f"hn:{item}"
     p = urlparse(url.strip())
     host = (p.hostname or "").lower().removeprefix("www.").removeprefix("m.")
     parts = [s for s in p.path.split("/") if s]

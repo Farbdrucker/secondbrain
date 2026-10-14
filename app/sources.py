@@ -1,30 +1,40 @@
 """Fetch the raw text for an inbox entry."""
 
 import html
+import json
 import os
 import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
-from .inbox import Entry
+from . import readlater
+from .inbox import Entry, kind_for_url
+from .urls import hn_item_id
 
 
 class FetchError(Exception):
-    pass
+    def __init__(self, message: str, title: str = "", article: str = ""):
+        super().__init__(message)
+        self.title = title  # known even though the content could not be fetched (e.g. HN title)
+        self.article = article
 
 
 @dataclass
 class Source:
     text: str
     title_hint: str = ""
+    article: str = ""  # page actually summarized when the link points to a discussion (Hacker News)
 
 
 def fetch(entry: Entry, brain: Path) -> Source:
     if entry.kind == "note":
         return Source(entry.payload)
     if entry.kind == "web":
-        return _web(entry.payload)
+        item = hn_item_id(entry.payload)
+        return _hackernews(item) if item else _web(entry.payload)
     if entry.kind == "pdf":
         return _pdf(brain / entry.payload, entry.file_name)
     if entry.kind in ("youtube", "instagram"):
@@ -48,6 +58,55 @@ def _web(url: str) -> Source:
     return Source(text.strip(), title)
 
 
+def fetch_url(url: str) -> Source:
+    """Any linked URL: video platforms, PDF files, otherwise a web page."""
+    if kind_for_url(url) in ("youtube", "instagram"):
+        return _media(url)
+    if urlparse(url).path.lower().endswith(".pdf"):
+        return _pdf_url(url)
+    return _web(url)
+
+
+# --- hacker news -----------------------------------------------------------------
+
+HN_API = "https://hacker-news.firebaseio.com/v0/item/{}.json"
+
+
+def _hackernews(item_id: str) -> Source:
+    """Summarize the linked article; keep the HN title. Text posts (Ask HN) use their own text."""
+    try:
+        with urlopen(HN_API.format(item_id), timeout=20) as r:
+            data = json.loads(r.read())
+    except (OSError, ValueError) as e:
+        raise FetchError(f"Hacker News API: {e}") from e
+    if not data or data.get("deleted") or data.get("dead"):
+        raise FetchError("Hacker News item not found or deleted")
+
+    title = html.unescape(data.get("title") or "")
+    url = data.get("url") or ""
+    own = _html_to_text(data.get("text") or "")
+    stats = f"Hacker News: {data.get('score', 0)} points, {data.get('descendants', 0)} comments"
+    if not url:
+        if len(own) < 30:
+            raise FetchError("Hacker News item has neither a link nor text", title=title)
+        return Source(f"{stats}\n\n{own}", title)
+    if readlater.matches(url):
+        raise FetchError("linked site blocks automated access", title=title, article=url)
+    try:
+        article = fetch_url(url)
+    except FetchError as e:
+        raise FetchError(f"linked article: {e}", title=title, article=url) from e
+    text = f"{stats}\n\n{article.text}"
+    if own:
+        text += f"\n\nText of the Hacker News post:\n{own}"
+    return Source(text, title or article.title_hint, article=url)
+
+
+def _html_to_text(fragment: str) -> str:
+    text = re.sub(r"<p>|<br\s*/?>", "\n\n", fragment)
+    return html.unescape(re.sub(r"<[^>]+>", "", text)).strip()
+
+
 # --- pdf ---------------------------------------------------------------------
 
 def _pdf(path: Path, file_name: str = "") -> Source:
@@ -62,6 +121,23 @@ def _pdf(path: Path, file_name: str = "") -> Source:
     if len(re.sub(r"\[page \d+\]|\s", "", text)) < 50:
         raise FetchError("PDF has no text layer (scanned?). OCR is not supported yet")
     return Source(text, title or Path(file_name).stem)
+
+
+MAX_PDF_BYTES = 50 * 1024 * 1024
+
+
+def _pdf_url(url: str) -> Source:
+    try:
+        with urlopen(Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=60) as r:
+            data = r.read(MAX_PDF_BYTES + 1)
+    except OSError as e:
+        raise FetchError(f"PDF download failed: {e}") from e
+    if len(data) > MAX_PDF_BYTES:
+        raise FetchError("linked PDF is larger than 50 MB")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "linked.pdf"
+        path.write_bytes(data)
+        return _pdf(path, Path(urlparse(url).path).name)
 
 
 # --- youtube / instagram -------------------------------------------------------

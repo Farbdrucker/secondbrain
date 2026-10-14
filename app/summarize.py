@@ -87,6 +87,10 @@ def build_prompt(entry: Entry, source: Source, existing_tags: dict[str, int], co
     ]
     if entry.kind not in ("note", "pdf"):
         lines.append(f"Source: {entry.payload}")
+    if source.article:
+        lines.append(f"Linked article: {source.article}")
+        lines.append("This link was shared on Hacker News. Title, summary and tags describe the linked "
+                     "article, not the discussion.")
     if entry.file_name:
         lines.append(f"File name: {entry.file_name}")
     if source.title_hint:
@@ -104,5 +108,5 @@ def build_prompt(entry: Entry, source: Source, existing_tags: dict[str, int], co
 def summarize(entry: Entry, source: Source, existing_tags: dict[str, int]) -> dict:
     condensed = len(source.text) > MAX_INPUT_CHARS
     if condensed:
-        source = Source(condense(source.text), source.title_hint)
+        source = Source(condense(source.text), source.title_hint, source.article)
     return llm_json(build_prompt(entry, source, existing_tags, condensed), SCHEMA, system_prompt())

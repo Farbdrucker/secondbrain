@@ -68,5 +68,8 @@ def render(meta: dict, summary: str, key_points: list[str], note_text: str = "",
         parts.append(f"## Comment\n{comment.strip()}\n")
     if meta.get("source"):
         label = "Original link" if str(meta["source"]).startswith("http") else "Original file"
-        parts.append(f"## Source\n[{label}]({meta['source']})\n")
+        links = f"[{label}]({meta['source']})"
+        if meta.get("article"):
+            links += f"\n[Linked article]({meta['article']})"
+        parts.append(f"## Source\n{links}\n")
     return "\n".join(parts)

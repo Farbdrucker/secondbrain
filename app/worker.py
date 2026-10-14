@@ -42,11 +42,12 @@ def run(cfg: Config, summarize_fn, llm=None) -> dict[str, int]:
                     if entry.kind != "web":
                         raise
                     # Paywall, bot protection or a dead server: keep the link instead of retrying.
-                    out = _write_read_later(cfg, entry, f"could not download ({e})", by_id.get(entry.id))
+                    out = _write_read_later(cfg, entry, f"could not download ({e})", by_id.get(entry.id),
+                                            title=e.title, article=e.article)
                 else:
                     vocabulary = {t: c for t, c in tags.items() if t not in readlater.tags()}
                     result = summarize_fn(entry, source, vocabulary)
-                    out = _write_note(cfg, entry, result, existing=by_id.get(entry.id))
+                    out = _write_note(cfg, entry, result, existing=by_id.get(entry.id), article=source.article)
         except LLMUnavailable as e:
             # Usage limit or outage: the rest would fail the same way. Retry next run.
             print(f"LLM unavailable, stopping this run: {e}", file=sys.stderr)
@@ -97,20 +98,29 @@ def _load_source(cfg: Config, entry: inbox.Entry) -> Source:
     else:
         source = fetch(entry, cfg.brain)
         text = source.text
+        header = [f"Article: {source.article}"] if source.article else []
         if source.title_hint and not text.startswith("Title: "):
-            text = f"Title: {source.title_hint}\n\n{text}"
+            header.insert(0, f"Title: {source.title_hint}")
+        if header:
+            text = "\n".join(header) + "\n\n" + text
         write_atomic(raw, text)
-    first = text.split("\n", 1)[0]
-    return Source(text, first.removeprefix("Title: ").strip() if first.startswith("Title: ") else "")
+    # Title and article survive in the raw header, so a retry needs no new download.
+    fields = {}
+    for line in text.split("\n\n", 1)[0].splitlines():
+        key, sep, value = line.partition(": ")
+        if sep and key in ("Title", "Article"):
+            fields.setdefault(key, value.strip())
+    return Source(text, fields.get("Title", ""), fields.get("Article", ""))
 
 
-def _write_note(cfg: Config, entry: inbox.Entry, result: dict, existing: Path | None) -> Path:
+def _write_note(cfg: Config, entry: inbox.Entry, result: dict, existing: Path | None, article: str = "") -> Path:
     title = " ".join(str(result["title"]).split())[:80] or "Untitled"
     tags = naming.normalize_tags(result.get("tags") or []) or ["untagged"]
     meta = {
         "id": entry.id,
         "type": entry.kind,
         "source": {"note": None, "pdf": f"../{entry.payload}"}.get(entry.kind, entry.payload),
+        "article": article or None,
         "file_name": entry.file_name or None,
         "received_at": entry.received_at,
         "processed_at": _now(cfg).isoformat(),
@@ -136,15 +146,17 @@ def _write_note(cfg: Config, entry: inbox.Entry, result: dict, existing: Path | 
     return target
 
 
-def _write_read_later(cfg: Config, entry: inbox.Entry, reason: str, existing: Path | None) -> Path:
+def _write_read_later(cfg: Config, entry: inbox.Entry, reason: str, existing: Path | None,
+                      title: str = "", article: str = "") -> Path:
     """A note for a link that was not fetched or summarized. Raw text keeps lint and dedupe working."""
     write_atomic(cfg.raw / f"{entry.id}.txt", f"URL: {entry.payload}\nNot fetched: {reason}\n")
-    title = readlater.title_for(entry.payload, entry.comment)
+    title = readlater.title_for(entry.payload, entry.comment, title)
     tags = readlater.tags()
     meta = {
         "id": entry.id,
         "type": entry.kind,
         "source": entry.payload,
+        "article": article or None,
         "received_at": entry.received_at,
         "processed_at": _now(cfg).isoformat(),
         "title": title,
@@ -152,6 +164,7 @@ def _write_read_later(cfg: Config, entry: inbox.Entry, reason: str, existing: Pa
         "summary_short": "Saved to read later, not summarized.",
         "raw": f"../raw/{entry.id}.txt",
     }
+    meta = {k: v for k, v in meta.items() if v is not None}
     text = wiki.render(meta, summary=f"Saved to read later. Not summarized: {reason}.", key_points=[],
                        comment=entry.comment)
     name = naming.filename(entry.received.strftime("%Y-%m-%d"), tags, title)

@@ -28,8 +28,10 @@ def matches(url: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in domains())
 
 
-def title_for(url: str, comment: str) -> str:
-    if comment.strip():
-        return " ".join(comment.split())[:80]
+def title_for(url: str, comment: str, known_title: str = "") -> str:
+    """The owner's comment wins, then a title known without fetching (HN), then the URL."""
+    for text in (comment, known_title):
+        if text.strip():
+            return " ".join(text.split())[:80]
     p = urlparse(url)
     return f"Read later: {(p.hostname or '').removeprefix('www.')}{p.path.rstrip('/')}"[:80]
